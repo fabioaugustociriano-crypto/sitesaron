@@ -3,39 +3,210 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Rastreamento de Pedido</title>
+<title>Painel do Dono - Pedidos</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;margin:0;padding:20px}
-  .container{max-width:500px;margin:20px auto;background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
-  input,button{margin:5px 0;padding:8px;font-size:14px}
-  .pedido{margin-top:15px;padding:10px;border:1px solid #ddd;border-radius:6px;background:#fafafa}
+  .container{max-width:1000px;margin:20px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 18px rgba(12,30,60,0.06)}
+  h1{margin-top:0}
+  input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;box-sizing:border-box;margin-bottom:10px}
+  button{background:#0b69ff;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
+  button.danger{background:#e23b3b}
+  .row{display:flex;gap:12px}
+  @media(max-width:800px){ .row{flex-direction:column} }
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>Rastreamento de Pedido</h1>
-  <p>Digite o código (nome sem espaços + 4 primeiros dígitos do CPF):</p>
-  <input id="codigo" placeholder="ex: joao1234">
-  <button onclick="buscar()">Rastrear</button>
-  <div id="resultado"></div>
-</div>
+  <div class="container">
+    <h1>Painel do Dono</h1>
+
+    <div class="row">
+      <div style="flex:1">
+        <label><strong>Senha admin</strong></label>
+        <input id="adminPass" type="password" placeholder="Senha admin" />
+      </div>
+      <div style="width:220px;display:flex;align-items:end">
+        <button id="btnLoad">Carregar Pedidos</button>
+      </div>
+    </div>
+
+    <hr/>
+
+    <h3>Criar Pedido</h3>
+    <div class="row">
+      <div style="flex:1">
+        <label>Nome do cliente</label>
+        <input id="createName" placeholder="Nome completo" />
+      </div>
+      <div style="width:240px">
+        <label>CPF (somente números)</label>
+        <input id="createCpf" placeholder="Ex: 12345678909" />
+      </div>
+    </div>
+    <label>Descrição</label>
+    <textarea id="createDesc" rows="2" placeholder="Descrição do pedido"></textarea>
+    <div style="display:flex;gap:8px">
+      <button id="createBtn">Criar Pedido</button>
+      <button id="clearAllBtn" class="danger">Limpar TODOS</button>
+    </div>
+
+    <div id="message" class="small" style="margin-top:8px;color:#a00"></div>
+
+    <h3 style="margin-top:18px">Lista de Pedidos</h3>
+    <div id="ordersBox"></div>
+  </div>
 
 <script>
-function buscar(){
-  let code=document.getElementById("codigo").value.trim().toLowerCase();
-  fetch("/api/orders/"+code)
-    .then(r=>r.json())
-    .then(p=>{
-      if(p.error){document.getElementById("resultado").innerHTML="<p>"+p.error+"</p>";return;}
-      document.getElementById("resultado").innerHTML=`
-        <div class="pedido">
-          <p><b>Código:</b> ${p.code}</p>
-          <p><b>Nome:</b> ${p.name}</p>
-          <p><b>Status:</b> ${p.status}</p>
-          <p><b>Descrição:</b> ${p.description}</p>
-        </div>`;
-    });
+function normalizeName(name){
+  return (name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]/g,'');
 }
+function digitsOnly(s){ return (s||'').replace(/\D/g,''); }
+function generateCode(name, cpf){
+  const n = normalizeName(name);
+  const c = digitsOnly(cpf).slice(0,4);
+  return (n + c);
+}
+function loadOrders(){ return JSON.parse(localStorage.getItem('orders_v1')||'[]'); }
+function saveOrders(a){ localStorage.setItem('orders_v1', JSON.stringify(a)); }
+
+function validateCPF(cpf){
+  const s = digitsOnly(cpf);
+  if(s.length !== 11) return false;
+  if(/^(\d)\1+$/.test(s)) return false;
+  const calc = (arr, pos) => {
+    let sum = 0;
+    for(let i=0;i<pos;i++) sum += Number(arr[i]) * (pos+1-i);
+    let res = (sum * 10) % 11;
+    return (res === 10) ? 0 : res;
+  };
+  const a = s.split('');
+  return calc(a,9) === Number(a[9]) && calc(a,10) === Number(a[10]);
+}
+
+const ADMIN_PASS = 'Batista2025';
+const msg = document.getElementById('message');
+const ordersBox = document.getElementById('ordersBox');
+
+function showMessage(t, ok=true){
+  msg.style.color = ok ? '#0a7' : '#a00';
+  msg.textContent = t;
+  setTimeout(()=>{ msg.textContent=''; }, 4000);
+}
+
+document.getElementById('createBtn').addEventListener('click', ()=> {
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+
+  const name = document.getElementById('createName').value.trim();
+  const cpf = digitsOnly(document.getElementById('createCpf').value);
+  const desc = document.getElementById('createDesc').value.trim();
+  if(!name || !cpf){ showMessage('Informe nome e CPF.', false); return; }
+  if(!validateCPF(cpf)){ showMessage('CPF inválido.', false); return; }
+
+  const orders = loadOrders();
+  let code = generateCode(name, cpf);
+  if(orders.some(o=>o.code===code)){
+    code = code + Date.now().toString().slice(-4);
+  }
+  const now = new Date().toISOString();
+  const order = {
+    id: Date.now(),
+    code, name, cpf, description: desc, status: 'criado',
+    createdAt: now, updatedAt: now
+  };
+  orders.unshift(order);
+  saveOrders(orders);
+  showMessage('Pedido criado: ' + code, true);
+  renderList();
+});
+
+document.getElementById('btnLoad').addEventListener('click', ()=> {
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+  renderList();
+});
+
+document.getElementById('clearAllBtn').addEventListener('click', ()=> {
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+  if(!confirm('Tem certeza que deseja apagar TODOS os pedidos?')) return;
+  localStorage.removeItem('orders_v1');
+  renderList();
+  showMessage('Todos apagados.', true);
+});
+
+function renderList(){
+  const orders = loadOrders();
+  if(!orders.length){ ordersBox.innerHTML = '<p class="small">Nenhum pedido.</p>'; return; }
+
+  const rows = orders.map(o => `
+    <tr data-id="${o.id}">
+      <td><strong>${o.code}</strong><div class="small">${new Date(o.createdAt).toLocaleString()}</div></td>
+      <td><input class="editName" value="${o.name}" /><br><input class="editCpf" value="${o.cpf}" /></td>
+      <td><textarea class="editDesc">${o.description||''}</textarea></td>
+      <td>
+        <select class="editStatus">
+          <option value="criado" ${o.status==='criado'?'selected':''}>criado</option>
+          <option value="em produção" ${o.status==='em produção'?'selected':''}>em produção</option>
+          <option value="separado" ${o.status==='separado'?'selected':''}>separado</option>
+          <option value="entregue" ${o.status==='entregue'?'selected':''}>entregue</option>
+        </select>
+      </td>
+      <td>
+        <button class="saveBtn">Salvar</button>
+        <button class="deleteBtn" style="background:#e23b3b;color:#fff">Excluir</button>
+      </td>
+    </tr>
+  `).join('');
+
+  ordersBox.innerHTML = <table><thead><tr><th>Código</th><th>Cliente</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>;
+
+  document.querySelectorAll('.saveBtn').forEach(btn => btn.addEventListener('click', onSave));
+  document.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', onDelete));
+}
+
+function onSave(ev){
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+  const tr = ev.currentTarget.closest('tr');
+  const id = Number(tr.dataset.id);
+  const name = tr.querySelector('.editName').value.trim();
+  const cpf = digitsOnly(tr.querySelector('.editCpf').value);
+  const desc = tr.querySelector('.editDesc').value.trim();
+  const status = tr.querySelector('.editStatus').value;
+
+  if(!name || !cpf){ showMessage('Nome e CPF obrigatórios.', false); return; }
+  if(!validateCPF(cpf)){ showMessage('CPF inválido.', false); return; }
+
+  const orders = loadOrders();
+  const idx = orders.findIndex(o => o.id === id);
+  if(idx === -1){ showMessage('Pedido não encontrado.', false); return; }
+
+  let newCode = generateCode(name, cpf);
+  if(orders.some((o,i)=> o.code===newCode && o.id!==id)){
+    newCode = newCode + Date.now().toString().slice(-4);
+  }
+
+  orders[idx] = {...orders[idx], name, cpf, description: desc, status, code: newCode, updatedAt: new Date().toISOString()};
+  saveOrders(orders);
+  showMessage('Pedido salvo.', true);
+  renderList();
+}
+
+function onDelete(ev){
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+  if(!confirm('Excluir?')) return;
+  const tr = ev.currentTarget.closest('tr');
+  const id = Number(tr.dataset.id);
+  let orders = loadOrders();
+  orders = orders.filter(o=>o.id!==id);
+  saveOrders(orders);
+  showMessage('Pedido excluído.', true);
+  renderList();
+}
+
+renderList();
 </script>
 </body>
 </html>
