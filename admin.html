@@ -46,7 +46,6 @@
     <textarea id="createDesc" rows="2" placeholder="Descrição do pedido"></textarea>
     <div style="display:flex;gap:8px">
       <button id="createBtn">Criar Pedido</button>
-      <button id="clearAllBtn" class="danger">Limpar TODOS</button>
     </div>
 
     <div id="message" class="small" style="margin-top:8px;color:#a00"></div>
@@ -56,34 +55,8 @@
   </div>
 
 <script>
-function normalizeName(name){
-  return (name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase().replace(/[^a-z0-9]/g,'');
-}
-function digitsOnly(s){ return (s||'').replace(/\D/g,''); }
-function generateCode(name, cpf){
-  const n = normalizeName(name);
-  const c = digitsOnly(cpf).slice(0,4);
-  return (n + c);
-}
-function loadOrders(){ return JSON.parse(localStorage.getItem('orders_v1')||'[]'); }
-function saveOrders(a){ localStorage.setItem('orders_v1', JSON.stringify(a)); }
-
-function validateCPF(cpf){
-  const s = digitsOnly(cpf);
-  if(s.length !== 11) return false;
-  if(/^(\d)\1+$/.test(s)) return false;
-  const calc = (arr, pos) => {
-    let sum = 0;
-    for(let i=0;i<pos;i++) sum += Number(arr[i]) * (pos+1-i);
-    let res = (sum * 10) % 11;
-    return (res === 10) ? 0 : res;
-  };
-  const a = s.split('');
-  return calc(a,9) === Number(a[9]) && calc(a,10) === Number(a[10]);
-}
-
-const ADMIN_PASS = 'Batista2025';
+const API_URL = "http://localhost:3000"; // ajuste se hospedar
+const ADMIN_PASS = "Batista2025";
 const msg = document.getElementById('message');
 const ordersBox = document.getElementById('ordersBox');
 
@@ -93,120 +66,109 @@ function showMessage(t, ok=true){
   setTimeout(()=>{ msg.textContent=''; }, 4000);
 }
 
+// criar pedido
 document.getElementById('createBtn').addEventListener('click', ()=> {
   const pass = document.getElementById('adminPass').value;
   if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
 
   const name = document.getElementById('createName').value.trim();
-  const cpf = digitsOnly(document.getElementById('createCpf').value);
+  const cpf = document.getElementById('createCpf').value.trim();
   const desc = document.getElementById('createDesc').value.trim();
-  if(!name || !cpf){ showMessage('Informe nome e CPF.', false); return; }
-  if(!validateCPF(cpf)){ showMessage('CPF inválido.', false); return; }
 
-  const orders = loadOrders();
-  let code = generateCode(name, cpf);
-  if(orders.some(o=>o.code===code)){
-    code = code + Date.now().toString().slice(-4);
-  }
-  const now = new Date().toISOString();
-  const order = {
-    id: Date.now(),
-    code, name, cpf, description: desc, status: 'criado',
-    createdAt: now, updatedAt: now
-  };
-  orders.unshift(order);
-  saveOrders(orders);
-  showMessage('Pedido criado: ' + code, true);
-  renderList();
+  if(!name || !cpf){ showMessage('Informe nome e CPF.', false); return; }
+
+  fetch(API_URL+"/orders", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, cpf, description: desc})
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    if(d.error){ showMessage(d.error,false); return; }
+    showMessage("Pedido criado: "+d.code,true);
+    renderList();
+  })
+  .catch(()=> showMessage("Erro no servidor",false));
 });
 
+// carregar pedidos
 document.getElementById('btnLoad').addEventListener('click', ()=> {
   const pass = document.getElementById('adminPass').value;
   if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
   renderList();
 });
 
-document.getElementById('clearAllBtn').addEventListener('click', ()=> {
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
-  if(!confirm('Tem certeza que deseja apagar TODOS os pedidos?')) return;
-  localStorage.removeItem('orders_v1');
-  renderList();
-  showMessage('Todos apagados.', true);
-});
-
+// renderizar lista
 function renderList(){
-  const orders = loadOrders();
-  if(!orders.length){ ordersBox.innerHTML = '<p class="small">Nenhum pedido.</p>'; return; }
+  const pass = document.getElementById('adminPass').value;
+  if(pass !== ADMIN_PASS){ return; }
 
-  const rows = orders.map(o => `
-    <tr data-id="${o.id}">
-      <td><strong>${o.code}</strong><div class="small">${new Date(o.createdAt).toLocaleString()}</div></td>
-      <td><input class="editName" value="${o.name}" /><br><input class="editCpf" value="${o.cpf}" /></td>
-      <td><textarea class="editDesc">${o.description||''}</textarea></td>
-      <td>
-        <select class="editStatus">
-          <option value="criado" ${o.status==='criado'?'selected':''}>criado</option>
-          <option value="em produção" ${o.status==='em produção'?'selected':''}>em produção</option>
-          <option value="separado" ${o.status==='separado'?'selected':''}>separado</option>
-          <option value="entregue" ${o.status==='entregue'?'selected':''}>entregue</option>
-        </select>
-      </td>
-      <td>
-        <button class="saveBtn">Salvar</button>
-        <button class="deleteBtn" style="background:#e23b3b;color:#fff">Excluir</button>
-      </td>
-    </tr>
-  `).join('');
-
-  ordersBox.innerHTML = `<table><thead><tr><th>Código</th><th>Cliente</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
-
-  document.querySelectorAll('.saveBtn').forEach(btn => btn.addEventListener('click', onSave));
-  document.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', onDelete));
+  fetch(API_URL+"/orders?pass="+pass)
+    .then(r=>r.json())
+    .then(orders=>{
+      if(!orders.length){ ordersBox.innerHTML = "<p>Nenhum pedido.</p>"; return; }
+      const rows = orders.map(o => `
+        <tr data-id="${o.id}">
+          <td><strong>${o.code}</strong><div class="small">${new Date(o.createdAt).toLocaleString()}</div></td>
+          <td><input class="editName" value="${o.name}" /><br><input class="editCpf" value="${o.cpf}" /></td>
+          <td><textarea class="editDesc">${o.description||''}</textarea></td>
+          <td>
+            <select class="editStatus">
+              <option value="criado" ${o.status==='criado'?'selected':''}>criado</option>
+              <option value="em produção" ${o.status==='em produção'?'selected':''}>em produção</option>
+              <option value="separado" ${o.status==='separado'?'selected':''}>separado</option>
+              <option value="entregue" ${o.status==='entregue'?'selected':''}>entregue</option>
+            </select>
+          </td>
+          <td>
+            <button class="saveBtn">Salvar</button>
+            <button class="deleteBtn" style="background:#e23b3b;color:#fff">Excluir</button>
+          </td>
+        </tr>
+      `).join('');
+      ordersBox.innerHTML = `<table><thead><tr><th>Código</th><th>Cliente</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
+      document.querySelectorAll('.saveBtn').forEach(btn => btn.addEventListener('click', onSave));
+      document.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', onDelete));
+    });
 }
 
 function onSave(ev){
   const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
+  if(pass !== ADMIN_PASS){ showMessage('Senha incorreta',false); return; }
   const tr = ev.currentTarget.closest('tr');
-  const id = Number(tr.dataset.id);
-  const name = tr.querySelector('.editName').value.trim();
-  const cpf = digitsOnly(tr.querySelector('.editCpf').value);
-  const desc = tr.querySelector('.editDesc').value.trim();
+  const id = tr.dataset.id;
+  const name = tr.querySelector('.editName').value;
+  const cpf = tr.querySelector('.editCpf').value;
+  const description = tr.querySelector('.editDesc').value;
   const status = tr.querySelector('.editStatus').value;
 
-  if(!name || !cpf){ showMessage('Nome e CPF obrigatórios.', false); return; }
-  if(!validateCPF(cpf)){ showMessage('CPF inválido.', false); return; }
-
-  const orders = loadOrders();
-  const idx = orders.findIndex(o => o.id === id);
-  if(idx === -1){ showMessage('Pedido não encontrado.', false); return; }
-
-  let newCode = generateCode(name, cpf);
-  if(orders.some((o,i)=> o.code===newCode && o.id!==id)){
-    newCode = newCode + Date.now().toString().slice(-4);
-  }
-
-  orders[idx] = {...orders[idx], name, cpf, description: desc, status, code: newCode, updatedAt: new Date().toISOString()};
-  saveOrders(orders);
-  showMessage('Pedido salvo.', true);
-  renderList();
+  fetch(API_URL+"/orders/"+id+"?pass="+pass, {
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, cpf, description, status})
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    if(d.error){ showMessage(d.error,false); return; }
+    showMessage("Pedido salvo.",true);
+    renderList();
+  });
 }
 
 function onDelete(ev){
   const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
-  if(!confirm('Excluir?')) return;
+  if(pass !== ADMIN_PASS){ showMessage('Senha incorreta',false); return; }
+  if(!confirm("Excluir pedido?")) return;
   const tr = ev.currentTarget.closest('tr');
-  const id = Number(tr.dataset.id);
-  let orders = loadOrders();
-  orders = orders.filter(o=>o.id!==id);
-  saveOrders(orders);
-  showMessage('Pedido excluído.', true);
-  renderList();
+  const id = tr.dataset.id;
+  fetch(API_URL+"/orders/"+id+"?pass="+pass, {method:"DELETE"})
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.error){ showMessage(d.error,false); return; }
+      showMessage("Pedido excluído.",true);
+      renderList();
+    });
 }
-
-renderList();
 </script>
 </body>
 </html>
