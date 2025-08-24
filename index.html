@@ -8,7 +8,7 @@
   body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;margin:0;padding:20px}
   .container{max-width:820px;margin:20px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 18px rgba(12,30,60,0.06)}
   h1{margin-top:0}
-  input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;box-sizing:border-box;margin-bottom:10px}
+  input{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;box-sizing:border-box;margin-bottom:10px}
   button{background:#0b69ff;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
   .small{font-size:0.9rem;color:#556}
   .badge{padding:6px 10px;border-radius:8px;font-weight:600;display:inline-block}
@@ -27,10 +27,7 @@
     Ex.: <em>joaosilva1234</em></p>
 
     <input id="codeInput" placeholder="ex: joaosilva1234" />
-    <div style="display:flex;gap:8px">
-      <button id="searchBtn">Buscar Pedido</button>
-      <button id="listAllBtn" style="background:#4caf50">Ver todos (públicos)</button>
-    </div>
+    <button id="searchBtn">Buscar Pedido</button>
 
     <div id="result"></div>
 
@@ -50,7 +47,6 @@ function generateCode(name, cpf){
   return (n + c);
 }
 function loadOrders(){ return JSON.parse(localStorage.getItem('orders_v1')||'[]'); }
-function saveOrders(a){ localStorage.setItem('orders_v1', JSON.stringify(a)); }
 
 const resultEl = document.getElementById('result');
 document.getElementById('searchBtn').addEventListener('click', ()=> {
@@ -63,27 +59,12 @@ document.getElementById('searchBtn').addEventListener('click', ()=> {
   renderOrder(order);
 });
 
-document.getElementById('listAllBtn').addEventListener('click', ()=> {
-  resultEl.innerHTML = '';
-  const orders = loadOrders();
-  if(orders.length===0){ resultEl.innerHTML = '<p class="small">Nenhum pedido disponível.</p>'; return; }
-  const rows = orders.map(o => `
-    <div class="result">
-      <strong>${o.code}</strong> — ${o.name} <br/>
-      <span class="badge ${o.status.replace(/\s/g,'').replace('ê','e')}">${o.status}</span>
-      <div class="small">Atualizado: ${new Date(o.updatedAt).toLocaleString()}</div>
-    </div>
-  `).join('');
-  resultEl.innerHTML = rows;
-});
-
 function renderOrder(o){
   const statusClass = o.status.replace(/\s/g,'').replace('ê','e');
   resultEl.innerHTML = `
     <div class="result">
       <h3>Pedido: ${o.code}</h3>
       <div><strong>Nome:</strong> ${o.name}</div>
-      <div><strong>CPF:</strong> ${o.cpf}</div>
       <div><strong>Descrição:</strong> ${o.description || '-'}</div>
       <div><strong>Status:</strong> <span class="badge ${statusClass}">${o.status}</span></div>
       <div class="small">Criado: ${new Date(o.createdAt).toLocaleString()} • Atualizado: ${new Date(o.updatedAt).toLocaleString()}</div>
