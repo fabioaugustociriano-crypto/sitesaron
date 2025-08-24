@@ -6,168 +6,100 @@
 <title>Painel do Dono - Pedidos</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;margin:0;padding:20px}
-  .container{max-width:1000px;margin:20px auto;background:#fff;padding:18px;border-radius:10px;box-shadow:0 6px 18px rgba(12,30,60,0.06)}
-  h1{margin-top:0}
-  input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;box-sizing:border-box;margin-bottom:10px}
-  button{background:#0b69ff;color:#fff;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
-  button.danger{background:#e23b3b}
-  .row{display:flex;gap:12px}
-  @media(max-width:800px){ .row{flex-direction:column} }
+  .container{max-width:900px;margin:20px auto;background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1)}
+  h1{font-size:22px;margin-bottom:10px}
+  input,textarea,button{margin:5px 0;padding:8px;font-size:14px}
+  table{width:100%;border-collapse:collapse;margin-top:15px}
+  th,td{border:1px solid #ddd;padding:8px;text-align:left;font-size:14px}
+  th{background:#f0f0f0}
 </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Painel do Dono</h1>
-
-    <div class="row">
-      <div style="flex:1">
-        <label><strong>Senha admin</strong></label>
-        <input id="adminPass" type="password" placeholder="Senha admin" />
-      </div>
-      <div style="width:220px;display:flex;align-items:end">
-        <button id="btnLoad">Carregar Pedidos</button>
-      </div>
-    </div>
-
-    <hr/>
-
-    <h3>Criar Pedido</h3>
-    <div class="row">
-      <div style="flex:1">
-        <label>Nome do cliente</label>
-        <input id="createName" placeholder="Nome completo" />
-      </div>
-      <div style="width:240px">
-        <label>CPF (somente números)</label>
-        <input id="createCpf" placeholder="Ex: 12345678909" />
-      </div>
-    </div>
-    <label>Descrição</label>
-    <textarea id="createDesc" rows="2" placeholder="Descrição do pedido"></textarea>
-    <div style="display:flex;gap:8px">
-      <button id="createBtn">Criar Pedido</button>
-    </div>
-
-    <div id="message" class="small" style="margin-top:8px;color:#a00"></div>
-
-    <h3 style="margin-top:18px">Lista de Pedidos</h3>
-    <div id="ordersBox"></div>
+<div class="container">
+  <h1>Painel do Dono - Pedidos</h1>
+  
+  <label>Senha de admin:</label><br>
+  <input type="password" id="senha"><button onclick="login()">Entrar</button>
+  
+  <div id="painel" style="display:none;">
+    <h2>Novo Pedido</h2>
+    <input id="nome" placeholder="Nome do cliente"><br>
+    <input id="cpf" placeholder="CPF"><br>
+    <textarea id="desc" placeholder="Descrição do pedido"></textarea><br>
+    <button onclick="criarPedido()">Adicionar Pedido</button>
+    
+    <h2>Todos os Pedidos</h2>
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Código</th><th>Nome</th><th>CPF</th><th>Status</th><th>Ações</th></tr>
+      </thead>
+      <tbody id="listaPedidos"></tbody>
+    </table>
   </div>
+</div>
 
 <script>
-const API_URL = "http://localhost:3000"; // ajuste se hospedar
-const ADMIN_PASS = "Batista2025";
-const msg = document.getElementById('message');
-const ordersBox = document.getElementById('ordersBox');
-
-function showMessage(t, ok=true){
-  msg.style.color = ok ? '#0a7' : '#a00';
-  msg.textContent = t;
-  setTimeout(()=>{ msg.textContent=''; }, 4000);
+let SENHA = "";
+function login(){
+  SENHA = document.getElementById("senha").value;
+  carregarPedidos();
+  document.getElementById("painel").style.display="block";
 }
 
-// criar pedido
-document.getElementById('createBtn').addEventListener('click', ()=> {
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
-
-  const name = document.getElementById('createName').value.trim();
-  const cpf = document.getElementById('createCpf').value.trim();
-  const desc = document.getElementById('createDesc').value.trim();
-
-  if(!name || !cpf){ showMessage('Informe nome e CPF.', false); return; }
-
-  fetch(API_URL+"/orders", {
+function criarPedido(){
+  fetch("/api/orders",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({name, cpf, description: desc})
+    body:JSON.stringify({
+      name:document.getElementById("nome").value,
+      cpf:document.getElementById("cpf").value,
+      description:document.getElementById("desc").value
+    })
   })
-  .then(r=>r.json())
-  .then(d=>{
-    if(d.error){ showMessage(d.error,false); return; }
-    showMessage("Pedido criado: "+d.code,true);
-    renderList();
-  })
-  .catch(()=> showMessage("Erro no servidor",false));
-});
-
-// carregar pedidos
-document.getElementById('btnLoad').addEventListener('click', ()=> {
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha admin incorreta', false); return; }
-  renderList();
-});
-
-// renderizar lista
-function renderList(){
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ return; }
-
-  fetch(API_URL+"/orders?pass="+pass)
-    .then(r=>r.json())
-    .then(orders=>{
-      if(!orders.length){ ordersBox.innerHTML = "<p>Nenhum pedido.</p>"; return; }
-      const rows = orders.map(o => `
-        <tr data-id="${o.id}">
-          <td><strong>${o.code}</strong><div class="small">${new Date(o.createdAt).toLocaleString()}</div></td>
-          <td><input class="editName" value="${o.name}" /><br><input class="editCpf" value="${o.cpf}" /></td>
-          <td><textarea class="editDesc">${o.description||''}</textarea></td>
-          <td>
-            <select class="editStatus">
-              <option value="criado" ${o.status==='criado'?'selected':''}>criado</option>
-              <option value="em produção" ${o.status==='em produção'?'selected':''}>em produção</option>
-              <option value="separado" ${o.status==='separado'?'selected':''}>separado</option>
-              <option value="entregue" ${o.status==='entregue'?'selected':''}>entregue</option>
-            </select>
-          </td>
-          <td>
-            <button class="saveBtn">Salvar</button>
-            <button class="deleteBtn" style="background:#e23b3b;color:#fff">Excluir</button>
-          </td>
-        </tr>
-      `).join('');
-      ordersBox.innerHTML = `<table><thead><tr><th>Código</th><th>Cliente</th><th>Descrição</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table>`;
-      document.querySelectorAll('.saveBtn').forEach(btn => btn.addEventListener('click', onSave));
-      document.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', onDelete));
-    });
-}
-
-function onSave(ev){
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha incorreta',false); return; }
-  const tr = ev.currentTarget.closest('tr');
-  const id = tr.dataset.id;
-  const name = tr.querySelector('.editName').value;
-  const cpf = tr.querySelector('.editCpf').value;
-  const description = tr.querySelector('.editDesc').value;
-  const status = tr.querySelector('.editStatus').value;
-
-  fetch(API_URL+"/orders/"+id+"?pass="+pass, {
-    method:"PUT",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({name, cpf, description, status})
-  })
-  .then(r=>r.json())
-  .then(d=>{
-    if(d.error){ showMessage(d.error,false); return; }
-    showMessage("Pedido salvo.",true);
-    renderList();
+  .then(r=>r.json()).then(d=>{
+    alert("Pedido criado! Código: "+d.code);
+    carregarPedidos();
   });
 }
 
-function onDelete(ev){
-  const pass = document.getElementById('adminPass').value;
-  if(pass !== ADMIN_PASS){ showMessage('Senha incorreta',false); return; }
-  if(!confirm("Excluir pedido?")) return;
-  const tr = ev.currentTarget.closest('tr');
-  const id = tr.dataset.id;
-  fetch(API_URL+"/orders/"+id+"?pass="+pass, {method:"DELETE"})
+function carregarPedidos(){
+  fetch("/api/orders?pass="+SENHA)
     .then(r=>r.json())
-    .then(d=>{
-      if(d.error){ showMessage(d.error,false); return; }
-      showMessage("Pedido excluído.",true);
-      renderList();
+    .then(lista=>{
+      let html="";
+      lista.forEach(p=>{
+        html+=`<tr>
+          <td>${p.id}</td>
+          <td>${p.code}</td>
+          <td>${p.name}</td>
+          <td>${p.cpf}</td>
+          <td>
+            <select onchange="atualizar(${p.id},this.value,'${p.name}','${p.cpf}','${p.description}')">
+              <option ${p.status=='criado'?'selected':''}>criado</option>
+              <option ${p.status=='em andamento'?'selected':''}>em andamento</option>
+              <option ${p.status=='concluído'?'selected':''}>concluído</option>
+            </select>
+          </td>
+          <td><button onclick="excluir(${p.id})">Excluir</button></td>
+        </tr>`;
+      });
+      document.getElementById("listaPedidos").innerHTML=html;
     });
+}
+
+function atualizar(id,status,name,cpf,desc){
+  fetch("/api/orders/"+id+"?pass="+SENHA,{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({status,name,cpf,description:desc})
+  }).then(()=>carregarPedidos());
+}
+
+function excluir(id){
+  if(confirm("Excluir pedido "+id+"?")){
+    fetch("/api/orders/"+id+"?pass="+SENHA,{method:"DELETE"})
+      .then(()=>carregarPedidos());
+  }
 }
 </script>
 </body>
