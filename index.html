@@ -36,32 +36,26 @@
   </div>
 
 <script>
-function normalizeName(name){
-  return (name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase().replace(/[^a-z0-9]/g,'');
-}
-function digitsOnly(s){ return (s||'').replace(/\D/g,''); }
-function generateCode(name, cpf){
-  const n = normalizeName(name);
-  const c = digitsOnly(cpf).slice(0,4);
-  return (n + c);
-}
-function loadOrders(){ return JSON.parse(localStorage.getItem('orders_v1')||'[]'); }
+const API_URL = "http://localhost:3000";
 
-const resultEl = document.getElementById('result');
 document.getElementById('searchBtn').addEventListener('click', ()=> {
   const code = document.getElementById('codeInput').value.trim();
+  const resultEl = document.getElementById('result');
   resultEl.innerHTML = '';
   if(!code){ resultEl.innerHTML = '<p class="small">Informe o código.</p>'; return; }
-  const orders = loadOrders();
-  const order = orders.find(o => o.code === code);
-  if(!order){ resultEl.innerHTML = '<p class="small">Pedido não encontrado.</p>'; return; }
-  renderOrder(order);
+
+  fetch(API_URL+"/orders/"+code)
+    .then(r=>r.json())
+    .then(order=>{
+      if(order.error){ resultEl.innerHTML = "<p class='small'>Pedido não encontrado.</p>"; return; }
+      renderOrder(order);
+    })
+    .catch(()=> resultEl.innerHTML = "<p class='small'>Erro ao conectar ao servidor.</p>");
 });
 
 function renderOrder(o){
   const statusClass = o.status.replace(/\s/g,'').replace('ê','e');
-  resultEl.innerHTML = `
+  document.getElementById('result').innerHTML = `
     <div class="result">
       <h3>Pedido: ${o.code}</h3>
       <div><strong>Nome:</strong> ${o.name}</div>
